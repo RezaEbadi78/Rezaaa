@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Historical Market Data Exporter</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header>
+      <h1>Historical Market Data Exporter</h1>
+    </header>
+
+    <main>
+      <!-- Asset class selector -->
+      <section id="asset-class-section">
+        <label for="assetClass">Asset Class:</label>
+        <select id="assetClass">
+          <option value="crypto" selected>Cryptocurrency</option>
+          <option value="forex">Forex</option>
+          <option value="stock">Stocks</option>
+        </select>
+      </section>
+
+      <!-- Searchable asset list -->
+      <section id="asset-selector-section">
+        <label for="assetSearch">Search Asset:</label>
+        <input type="text" id="assetSearch" placeholder="Type to search…" />
+        <div id="assetList" class="list-container"></div>
+      </section>
+
+      <!-- Selected asset + real-time price -->
+      <section id="price-section">
+        <h2 id="selectedAssetDisplay">—</h2>
+        <p>Live Price: <span id="livePrice">—</span></p>
+      </section>
+
+      <!-- Timeframe & date range picker -->
+      <section id="query-section">
+        <div class="form-group">
+          <label for="timeframe">Timeframe:</label>
+          <select id="timeframe">
+            <option value="1m">1 Minute</option>
+            <option value="5m">5 Minutes</option>
+            <option value="15m">15 Minutes</option>
+            <option value="1h">1 Hour</option>
+            <option value="4h">4 Hours</option>
+            <option value="1d">Daily</option>
+            <option value="1w">Weekly</option>
+            <option value="1M">Monthly</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="startDate">Start:</label>
+          <input type="datetime-local" id="startDate" />
+        </div>
+        <div class="form-group">
+          <label for="endDate">End:</label>
+          <input type="datetime-local" id="endDate" />
+        </div>
+      </section>
+
+      <!-- Generate button -->
+      <section id="export-section">
+        <button id="exportBtn">Generate &amp; Download CSV</button>
+        <p id="status"></p>
+      </section>
+    </main>
+
+    <footer>
+      <p>
+        Data provided by Binance (Crypto) and Alpha Vantage (Forex &amp; Stocks). Alpha
+        Vantage requires a free API key; insert yours in <code>script.js</code>.
+      </p>
+    </footer>
+
+    <script src="script.js"></script>
+  </body>
+</html>
