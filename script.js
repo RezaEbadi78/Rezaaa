@@ -82,25 +82,75 @@ async function loadCryptoAssets() {
   }
 }
 
+const ALLORIGINS = "https://api.allorigins.win/raw?url=";
+
+const YAHOO_INTERVAL_MAP = {
+  "1m": "1m",
+  "5m": "5m",
+  "15m": "15m",
+  "1h": "60m",
+  "4h": "60m", // Approximate using 1h data
+  "1d": "1d",
+  "1w": "1wk",
+  "1M": "1mo",
+};
+
+async function fetchYahooCandles(symbol, interval, startMs, endMs) {
+  const intervalParam = YAHOO_INTERVAL_MAP[interval];
+  if (!intervalParam) throw new Error("Selected timeframe not supported for Yahoo Finance");
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?period1=${Math.floor(
+    startMs / 1000
+  )}&period2=${Math.floor(endMs / 1000)}&interval=${intervalParam}&includePrePost=false`;
+  const proxied = ALLORIGINS + encodeURIComponent(url);
+  const res = await fetch(proxied);
+  const json = await res.json();
+  if (!json.chart || !json.chart.result || !json.chart.result[0]) {
+    throw new Error("Yahoo Finance response malformed or unavailable");
+  }
+  const result = json.chart.result[0];
+  const tsArr = result.timestamp;
+  const quote = result.indicators.quote[0];
+  const rows = tsArr.map((ts, i) => ({
+    timestamp: ts * 1000,
+    open: quote.open[i],
+    high: quote.high[i],
+    low: quote.low[i],
+    close: quote.close[i],
+    volume: quote.volume[i],
+  })).filter((r) => r.open != null && r.close != null);
+  return rows;
+}
+
+async function fetchYahooLatestPrice(symbol) {
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1m&range=1d`;
+  const proxied = ALLORIGINS + encodeURIComponent(url);
+  const res = await fetch(proxied);
+  const json = await res.json();
+  if (!json.chart || !json.chart.result || !json.chart.result[0]) return "—";
+  const quote = json.chart.result[0].indicators.quote[0];
+  const closes = quote.close.filter((v) => v != null);
+  const last = closes[closes.length - 1];
+  return last ? Number(last).toFixed(4) : "—";
+}
+
 function getStaticForexAssets() {
-  // Major & minor pairs
   return [
-    { symbol: "EURUSD", base: "EUR", quote: "USD" },
-    { symbol: "GBPUSD", base: "GBP", quote: "USD" },
-    { symbol: "USDJPY", base: "USD", quote: "JPY" },
-    { symbol: "USDCHF", base: "USD", quote: "CHF" },
-    { symbol: "AUDUSD", base: "AUD", quote: "USD" },
-    { symbol: "USDCAD", base: "USD", quote: "CAD" },
+    { symbol: "EURUSD=X", display: "EUR/USD" },
+    { symbol: "GBPUSD=X", display: "GBP/USD" },
+    { symbol: "USDJPY=X", display: "USD/JPY" },
+    { symbol: "USDCHF=X", display: "USD/CHF" },
+    { symbol: "AUDUSD=X", display: "AUD/USD" },
+    { symbol: "USDCAD=X", display: "USD/CAD" },
   ];
 }
 
 function getStaticStockAssets() {
   return [
-    { symbol: "AAPL", name: "Apple Inc." },
-    { symbol: "GOOGL", name: "Alphabet Inc." },
-    { symbol: "MSFT", name: "Microsoft Corp." },
-    { symbol: "AMZN", name: "Amazon.com Inc." },
-    { symbol: "TSLA", name: "Tesla Inc." },
+    { symbol: "AAPL", name: "Apple Inc.", display: "AAPL" },
+    { symbol: "GOOGL", name: "Alphabet Inc.", display: "GOOGL" },
+    { symbol: "MSFT", name: "Microsoft Corp.", display: "MSFT" },
+    { symbol: "AMZN", name: "Amazon.com Inc.", display: "AMZN" },
+    { symbol: "TSLA", name: "Tesla Inc.", display: "TSLA" },
   ];
 }
 
@@ -132,7 +182,8 @@ function renderAssetList() {
   filteredAssets.forEach((asset) => {
     const div = document.createElement("div");
     div.className = "list-item";
-    div.textContent = asset.name ? `${asset.symbol} – ${asset.name}` : asset.symbol;
+    const text = asset.name ? `${asset.display || asset.symbol} – ${asset.name}` : (asset.display || asset.symbol);
+    div.textContent = text;
     div.addEventListener("click", () => selectAsset(asset, div));
     fragment.appendChild(div);
   });
@@ -143,7 +194,9 @@ function renderAssetList() {
 const handleSearch = debounce(() => {
   const q = assetSearchInput.value.toLowerCase();
   filteredAssets = assets.filter((a) => {
-    const s = (a.symbol + (a.name || "") + (a.base || "")).toLowerCase();
+    const s = (
+      (a.symbol || "") + (a.display || "") + (a.name || "") + (a.base || "")
+    ).toLowerCase();
     return s.includes(q);
   });
   renderAssetList();
@@ -154,7 +207,7 @@ const handleSearch = debounce(() => {
    ======================================================== */
 function selectAsset(asset, elementDiv) {
   selectedAsset = asset;
-  selectedAssetDisplay.textContent = asset.symbol;
+  selectedAssetDisplay.textContent = asset.display || asset.symbol;
   document.querySelectorAll(".list-item").forEach((e) => e.classList.remove("selected"));
   elementDiv.classList.add("selected");
 
@@ -172,16 +225,8 @@ async function updateLivePrice() {
       const res = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${selectedAsset.symbol}`);
       const data = await res.json();
       price = Number(data.price).toFixed(4);
-    } else if ((cls === "forex" || cls === "stock") && ALPHA_VANTAGE_API_KEY) {
-      const functionName = cls === "forex" ? "CURRENCY_EXCHANGE_RATE" : "GLOBAL_QUOTE";
-      const url = `https://www.alphavantage.co/query?function=${functionName}&${cls === "forex" ? `from_currency=${selectedAsset.base}&to_currency=${selectedAsset.quote}` : `symbol=${selectedAsset.symbol}`}&apikey=${ALPHA_VANTAGE_API_KEY}`;
-      const res = await fetch(url);
-      const data = await res.json();
-      if (cls === "forex") {
-        price = Number(data["Realtime Currency Exchange Rate"]["5. Exchange Rate"]).toFixed(5);
-      } else {
-        price = Number(data["Global Quote"]["05. price"]).toFixed(2);
-      }
+    } else {
+      price = await fetchYahooLatestPrice(selectedAsset.symbol);
     }
     livePriceSpan.textContent = price;
   } catch (err) {
@@ -272,12 +317,7 @@ async function handleExport() {
     if (cls === "crypto") {
       rows = await fetchBinanceKlines(selectedAsset.symbol, interval, start, end);
     } else {
-      // Alpha Vantage only supports specific intervals: 1min, 5min, 15min, 30min, 60min
-      const avInterval = interval === "1m" ? "1min" : interval === "5m" ? "5min" : interval === "15m" ? "15min" : interval === "1h" ? "60min" : null;
-      if (!avInterval) throw new Error("Selected timeframe not supported by Alpha Vantage");
-      rows = await fetchAlphaVantage(cls, selectedAsset.symbol, avInterval);
-      // Filter by date range
-      rows = rows.filter((r) => r.timestamp >= start && r.timestamp <= end);
+      rows = await fetchYahooCandles(selectedAsset.symbol, interval, start, end);
     }
     // Sort ascending by time
     rows.sort((a, b) => a.timestamp - b.timestamp);
